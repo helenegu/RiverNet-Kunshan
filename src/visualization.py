@@ -1,18 +1,28 @@
+# src/visualization.py
 import matplotlib.pyplot as plt
 
+def plot_concentration_map(node_coords, concentration_map, figsize=(10, 10), cmap="Reds"):
+    """
+    Plot pollution concentration along the river network.
+    
+    node_coords: dict mapping node -> (x, y) coordinates
+    concentration_map: dict mapping node -> pollution level (0-1)
+    """
+    # Prepare coordinates
+    xs = []
+    ys = []
+    colors = []
 
-def plot_concentration_map(node_coords, concentration, title="Pollution in Kunshan"):
-    xs, ys, cs = [], [], []
     for node, (x, y) in node_coords.items():
         xs.append(x)
         ys.append(y)
-        cs.append(concentration[node])
+        colors.append(concentration_map.get(node, 0))
 
-    plt.figure(figsize=(8, 6))
-    sc = plt.scatter(xs, ys, c=cs, s=10)
-    plt.colorbar(sc, label="Concentration")
-    plt.title(title)
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
-    plt.tight_layout()
+    plt.figure(figsize=figsize)
+    sc = plt.scatter(xs, ys, c=colors, cmap=cmap, s=10, alpha=0.8)
+    plt.colorbar(sc, label="Pollution concentration")
+    plt.title("River Pollution Simulation")
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.axis("equal")
     plt.show()

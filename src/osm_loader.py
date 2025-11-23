@@ -1,57 +1,60 @@
-import osmnx as ox
-from shapely.geometry import LineString, MultiLineString, Point
-from .river_network import RiverNetwork
+# src/osm_loader.py
+from pyrosm import OSM
+import networkx as nx
 
+class RiverNetwork:
+    def __init__(self, graph):
+        self.graph = graph
 
-def build_river_network_from_osm(place_name, flow_speed=0.8, min_segment_length=50.0):
-    tags = {"waterway": ["river", "stream", "canal"]}
-    gdf = ox.geometries_from_place(place_name, tags=tags)
+def build_river_network_from_osm(osm_file_path):
+    """
+    Build a river network from a PBF file using Pyrosm.
+    Returns a RiverNetwork object and a dict of node coordinates.
+    """
+    print(f"Reading OSM PBF file: {osm_file_path}")
+    
+    # Load OSM PBF
+    osm = OSM(osm_file_path)
 
-    rivers = gdf[gdf.geometry.type.isin(["LineString", "MultiLineString"])]
-    rivers_proj = ox.project_gdf(rivers)
+    # Extract waterways (rivers, streams, canals)
+    waterways = osm.get_data_by_custom_criteria(
+        custom_filter={"waterway": True},
+        filter_type="keep"
+    )
 
-    rn = RiverNetwork()
-    node_index = {}
-    node_coords = {}
+    if waterways.empty:
+        raise ValueError("No waterways found in the OSM data.")
 
-    def get_node_id(x, y):
-        key = (round(x, 2), round(y, 2))
-        if key not in node_index:
-            node_id = f"N{len(node_index)}"
-            node_index[key] = node_id
-            node_coords[node_id] = key
-        return node_index[key]
+    # Build a directed graph using NetworkX
+    G = nx.DiGraph()
 
-    for geom in rivers_proj.geometry:
-        if isinstance(geom, LineString):
-            coords = list(geom.coords)
+    print(f"Processing {len(waterways)} waterway geometries...")
+    for idx, row in waterways.iterrows():
+        geom = row["geometry"]
+
+        # Handle LineString and MultiLineString
+        if geom.geom_type == "LineString":
+            lines = [geom]
+        elif geom.geom_type == "MultiLineString":
+            lines = geom.geoms
+        else:
+            continue  # skip other geometries
+
+        for line in lines:
+            coords = list(line.coords)
             for i in range(len(coords) - 1):
-                x1, y1 = coords[i]
-                x2, y2 = coords[i + 1]
-                p1, p2 = Point(x1, y1), Point(x2, y2)
-                length = p1.distance(p2)
-                if length < min_segment_length:
-                    continue
-                u = get_node_id(x1, y1)
-                v = get_node_id(x2, y2)
-                travel_time = length / flow_speed
-                decay_factor = 0.99
-                rn.add_edge(u, v, travel_time, decay_factor)
+                start = coords[i]
+                end = coords[i + 1]
+                G.add_node(start, pos=start)
+                G.add_node(end, pos=end)
+                G.add_edge(start, end)
 
-        elif isinstance(geom, MultiLineString):
-            for ls in geom.geoms:
-                coords = list(ls.coords)
-                for i in range(len(coords) - 1):
-                    x1, y1 = coords[i]
-                    x2, y2 = coords[i + 1]
-                    p1, p2 = Point(x1, y1), Point(x2, y2)
-                    length = p1.distance(p2)
-                    if length < min_segment_length:
-                        continue
-                    u = get_node_id(x1, y1)
-                    v = get_node_id(x2, y2)
-                    travel_time = length / flow_speed
-                    decay_factor = 0.99
-                    rn.add_edge(u, v, travel_time, decay_factor)
+        if (idx + 1) % 100 == 0:
+            print(f"Processed {idx + 1}/{len(waterways)} waterways...")
 
-    return rn, node_coords
+    print("Building node coordinate map...")
+    node_coords = {node: data["pos"] for node, data in G.nodes(data=True)}
+
+    river_network = RiverNetwork(G)
+    print(f"River network built: {len(G.nodes)} nodes, {len(G.edges)} edges.")
+    return river_network, node_coords
