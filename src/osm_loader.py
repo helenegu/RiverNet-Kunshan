@@ -4,57 +4,65 @@ import networkx as nx
 
 class RiverNetwork:
     def __init__(self, graph):
-        self.graph = graph
+        self.graph = graph  # nx.DiGraph
 
 def build_river_network_from_osm(osm_file_path):
     """
     Build a river network from a PBF file using Pyrosm.
-    Returns a RiverNetwork object and a dict of node coordinates.
+    Returns:
+      RiverNetwork object
+      dict of node coordinates {node_id: (lat, lon)}
     """
     print(f"Reading OSM PBF file: {osm_file_path}")
     
-    # Load OSM PBF
     osm = OSM(osm_file_path)
 
-    # Extract waterways (rivers, streams, canals)
     waterways = osm.get_data_by_custom_criteria(
         custom_filter={"waterway": True},
         filter_type="keep"
     )
 
     if waterways.empty:
-        raise ValueError("No waterways found in the OSM data.")
+        raise ValueError("No waterways found in OSM data.")
 
-    # Build a directed graph using NetworkX
     G = nx.DiGraph()
+    node_coords = {}
+    node_id_counter = 0
+    coord_to_id = {}
 
-    print(f"Processing {len(waterways)} waterway geometries...")
+    print(f"Processing {len(waterways)} waterways...")
     for idx, row in waterways.iterrows():
         geom = row["geometry"]
-
-        # Handle LineString and MultiLineString
+        lines = []
         if geom.geom_type == "LineString":
             lines = [geom]
         elif geom.geom_type == "MultiLineString":
             lines = geom.geoms
         else:
-            continue  # skip other geometries
+            continue
 
         for line in lines:
-            coords = list(line.coords)
-            for i in range(len(coords) - 1):
-                start = coords[i]
-                end = coords[i + 1]
-                G.add_node(start, pos=start)
-                G.add_node(end, pos=end)
-                G.add_edge(start, end)
+            coords_list = list(line.coords)
+            for i in range(len(coords_list)-1):
+                start, end = coords_list[i], coords_list[i+1]
 
+                if start not in coord_to_id:
+                    coord_to_id[start] = node_id_counter
+                    node_coords[node_id_counter] = start
+                    node_id_counter += 1
+                if end not in coord_to_id:
+                    coord_to_id[end] = node_id_counter
+                    node_coords[node_id_counter] = end
+                    node_id_counter += 1
+
+                u = coord_to_id[start]
+                v = coord_to_id[end]
+                G.add_edge(u, v)
+
+        # --- Progress printing every 100 waterways ---
         if (idx + 1) % 100 == 0:
             print(f"Processed {idx + 1}/{len(waterways)} waterways...")
 
-    print("Building node coordinate map...")
-    node_coords = {node: data["pos"] for node, data in G.nodes(data=True)}
-
-    river_network = RiverNetwork(G)
+    print("Building node coordinate map complete.")
     print(f"River network built: {len(G.nodes)} nodes, {len(G.edges)} edges.")
-    return river_network, node_coords
+    return RiverNetwork(G), node_coords

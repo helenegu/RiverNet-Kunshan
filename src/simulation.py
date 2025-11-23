@@ -1,41 +1,30 @@
 # src/simulation.py
 import random
-import networkx as nx
 
-def pick_upstream_source(river_network):
+def pick_upstream_source(rn):
     """
-    Pick a random upstream node (source) in the river network.
-    Assumes nodes with no incoming edges are upstream sources.
+    Pick a node with indegree 0 as pollution source.
     """
-    G = river_network.graph
-    upstream_nodes = [n for n, deg in G.in_degree() if deg == 0]
-    
+    indegrees = rn.graph.in_degree()
+    upstream_nodes = [n for n, deg in indegrees if deg == 0]
     if not upstream_nodes:
-        # fallback: pick any random node
-        upstream_nodes = list(G.nodes)
-    
-    source_node = random.choice(upstream_nodes)
-    print("Selected source node:", source_node)
-    return source_node
+        upstream_nodes = list(rn.graph.nodes)
+    return random.choice(upstream_nodes)
 
-def simulate_pollution(river_network, source_node, decay=0.9):
+def simulate_pollution_single_pulse(rn, source_node, decay_factor=0.98, min_threshold=0.001):
     """
-    Simple pollution spread simulation along the river network.
-    - decay: pollution decay factor per edge
-    Returns a dict mapping nodes to pollution concentration.
+    Single-pulse pollution spread along all downstream edges.
     """
-    G = river_network.graph
-    concentrations = {node: 0 for node in G.nodes}
-    concentrations[source_node] = 1.0  # start with full pollution at source
+    pollution = {n: 0.0 for n in rn.graph.nodes}
+    stack = [(source_node, 1.0)]  # (node_id, pollution level)
 
-    # Use BFS to propagate pollution downstream
-    queue = [(source_node, 1.0)]
-    while queue:
-        current_node, current_conc = queue.pop(0)
-        for neighbor in G.successors(current_node):
-            next_conc = current_conc * decay
-            if next_conc > concentrations[neighbor]:
-                concentrations[neighbor] = next_conc
-                queue.append((neighbor, next_conc))
+    while stack:
+        node, value = stack.pop()
+        if value < min_threshold:
+            continue
+        # update pollution at this node
+        pollution[node] = value
+        for neighbor in rn.graph.successors(node):
+            stack.append((neighbor, value * decay_factor))
 
-    return concentrations
+    return pollution
