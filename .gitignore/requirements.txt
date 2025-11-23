@@ -1,0 +1,4 @@
+osmnx
+shapely
+matplotlib
+networkx   # osmnx dependency, but good to list
