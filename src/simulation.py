@@ -1,4 +1,5 @@
 # src/simulation.py
+from collections import defaultdict
 import random
 
 def pick_upstream_sources(rn, num_sources=1):
@@ -12,69 +13,88 @@ def pick_upstream_sources(rn, num_sources=1):
         upstream_nodes = list(rn.graph.nodes)
     return random.sample(upstream_nodes, min(num_sources, len(upstream_nodes)))
 
-def simulate_pollution_downstream(rn, source_nodes, decay_factor=0.98, retention=0.2, min_threshold=0.001):
 
-    pollution = {n: 0.0 for n in rn.graph.nodes}
-    stack = [(node, intensity) for node, intensity in source_nodes]
+def simulate_pollution_downstream(rn, source_nodes, retention=0.2, min_threshold=0.001):
 
-    while stack:
-        node, value = stack.pop()
-        if value < min_threshold:
-            continue
+    pollution = {n: 0.0 for n in rn.graph.nodes} # Total pollution accumulated in the system
+    arrival = defaultdict(float)  # arrival[node] = inflow of pollution to node for current timestep
 
-        # Retain a fraction at this node
-        retained = value * retention
-        pollution[node] += retained
+    # Initialize with source nodes
+    for node, intensity in source_nodes:
+        arrival[node] += intensity
 
-        # Remaining pollution to send downstream
-        to_send = value * (1 - retention) * decay_factor
-        if to_send < min_threshold:
-            continue
+    # Continue while some pollution is still flowing
+    while arrival:
+        next_arrival = defaultdict(float)
 
-        downstream_neighbors = list(rn.graph.successors(node))
-        if downstream_neighbors:
-            spread_value = to_send / len(downstream_neighbors)
-            for neighbor in downstream_neighbors:
-                stack.append((neighbor, spread_value))
-        else:
-            # Leaf node keeps all remaining pollution
-            pollution[node] += to_send
+        for node, inflow in arrival.items():
+            if inflow < min_threshold:
+                continue
+
+            # 1. Retain portion of inflow
+            retained = inflow * retention
+            pollution[node] += retained
+
+            # 2. Remaining pollution to send downstream
+            to_send = inflow * (1 - retention)
+            if to_send < min_threshold:
+                continue
+
+            neighbors = list(rn.graph.successors(node))
+
+            if neighbors:
+                share = to_send / len(neighbors)
+                for nbr in neighbors:
+                    next_arrival[nbr] += share
+            else:
+                # leaf node keeps all pollution
+                pollution[node] += to_send
+
+        arrival = next_arrival
 
     return pollution
 
 
-def simulate_pollution_animation(rn, source_nodes, decay_factor=0.98, retention=0.2, min_threshold=0.001):
+def simulate_pollution_animation(
+    rn, 
+    source_nodes, 
+    retention=0.2, 
+    min_threshold=0.001
+):
     """
-    Return list of pollution maps over time for animation.
+    Timestep-based simulation with snapshots for animation.
     """
+
     pollution = {n: 0.0 for n in rn.graph.nodes}
-    stack = [(node, intensity) for node, intensity in source_nodes]
+    arrival = defaultdict(float)
     snapshots = []
 
-    while stack:
-        next_stack = []
-        for node, value in stack:
-            if value < min_threshold:
+    for node, intensity in source_nodes:
+        arrival[node] += intensity
+
+    while arrival:
+        next_arrival = defaultdict(float)
+
+        for node, inflow in arrival.items():
+            if inflow < min_threshold:
                 continue
 
-            retained = value * retention
+            retained = inflow * retention
             pollution[node] += retained
 
-            to_send = value * (1 - retention) * decay_factor
+            to_send = inflow * (1 - retention)
             if to_send < min_threshold:
                 continue
 
-            downstream_neighbors = list(rn.graph.successors(node))
-            if downstream_neighbors:
-                spread_value = to_send / len(downstream_neighbors)
-                for neighbor in downstream_neighbors:
-                    next_stack.append((neighbor, spread_value))
+            neighbors = list(rn.graph.successors(node))
+            if neighbors:
+                share = to_send / len(neighbors)
+                for nbr in neighbors:
+                    next_arrival[nbr] += share
             else:
                 pollution[node] += to_send
 
         snapshots.append(pollution.copy())
-        stack = next_stack
+        arrival = next_arrival
 
     return snapshots
-
-

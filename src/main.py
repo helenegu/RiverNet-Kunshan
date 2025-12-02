@@ -73,7 +73,6 @@ def main():
     concentration_map = simulate_pollution_downstream(
         rn,
         source_nodes,
-        decay_factor=0.9,
         min_threshold=0.01
     )
     print("Pollution simulation complete!")
@@ -103,7 +102,6 @@ def main():
         pollution_snapshots = simulate_pollution_animation(
             rn,
             source_nodes=random_sources,
-            decay_factor=0.9,
             retention=0.2
         )
         
